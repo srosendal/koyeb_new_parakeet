@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import tempfile
+import time
 from pathlib import Path
 from collections import defaultdict
 
@@ -45,6 +46,10 @@ async def transcribe_audio(
         description="If true (default), split long audio into "
                     "~60s VAD-aligned chunks for batching"),
 ):
+    # Start total timing
+    request_start = time.perf_counter()
+    timings = {}
+    
     # Create temp file with appropriate extension
     suffix = Path(file.filename or "").suffix or ".wav"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -141,15 +146,25 @@ async def transcribe_audio(
         )
     finally:
         await file.close()
-
+    
+    # Timing: Upload complete
+    timings['upload'] = time.perf_counter() - request_start
+    logger.info(f"⏱️  Upload: {timings['upload']:.3f}s")
+    
     # Process audio to ensure mono 16kHz
+    prep_start = time.perf_counter()
     original, to_model = ensure_mono_16k(tmp_path)
+    timings['preprocessing'] = time.perf_counter() - prep_start
+    logger.info(f"⏱️  Preprocessing: {timings['preprocessing']:.3f}s")
 
+    chunk_start = time.perf_counter()
     if should_chunk:
         # Use low-memory chunker for non-streaming requests
       chunk_paths = vad_chunk_lowmem(to_model) or [to_model]
     else:
         chunk_paths = [to_model]
+    timings['vad_chunking'] = time.perf_counter() - chunk_start
+    logger.info(f"⏱️  VAD chunking: {timings['vad_chunking']:.3f}s")
 
     logger.info("transcribe(): sending %d chunks to ASR", len(chunk_paths))
 
@@ -162,6 +177,7 @@ async def transcribe_audio(
     # 2 – run ASR
     model = request.app.state.asr_model
 
+    inference_start = time.perf_counter()
     try:
         outs = model.transcribe(
             [str(p) for p in chunk_paths],
@@ -177,7 +193,12 @@ async def transcribe_audio(
         logger.exception("ASR failed")
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail=str(exc)) from exc
+    
+    timings['model_inference'] = time.perf_counter() - inference_start
+    logger.info(f"⏱️  Model inference (GPU): {timings['model_inference']:.3f}s")
 
+    # Format response
+    format_start = time.perf_counter()
     if isinstance(outs, tuple):
       outs = outs[0]
     texts = []
@@ -192,8 +213,14 @@ async def transcribe_audio(
 
     merged_text = " ".join(texts).strip()
     timestamps  = dict(merged) if include_timestamps else None
+    
+    timings['formatting'] = time.perf_counter() - format_start
+    timings['total_server'] = time.perf_counter() - request_start
+    
+    logger.info(f"⏱️  Formatting: {timings['formatting']:.3f}s")
+    logger.info(f"⏱️  Total server time: {timings['total_server']:.3f}s")
 
-    return TranscriptionResponse(text=merged_text, timestamps=timestamps)
+    return TranscriptionResponse(text=merged_text, timestamps=timestamps, timing=timings)
 
 @router.get("/debug/cfg")
 def show_cfg(request: Request):
