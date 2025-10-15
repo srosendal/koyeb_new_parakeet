@@ -9,3 +9,7 @@ class TranscriptionResponse(BaseModel):
         None,
         description="Word/segment/char offsets (see NeMo docs).",
     )
+    timing: Optional[Dict[str, float]] = Field(
+        None,
+        description="Server-side timing breakdown in seconds.",
+    )
