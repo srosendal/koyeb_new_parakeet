@@ -1,6 +1,6 @@
-# Parakeet-TDT 0.6B v2 FastAPI STT Service
+# Parakeet-TDT 0.6B v3 FastAPI STT Service
 
-A production-ready FastAPI service for high-accuracy English speech-to-text using NVIDIA's Parakeet-TDT 0.6B v2 model. Implements both REST and WebSocket endpoints following the [OpenAI Audio API specification](https://platform.openai.com/docs/api-reference/audio) interface.
+A production-ready FastAPI service for high-accuracy English speech-to-text using NVIDIA's Parakeet-TDT 0.6B v3 model. Implements both REST and WebSocket endpoints following the [OpenAI Audio API specification](https://platform.openai.com/docs/api-reference/audio) interface.
 
 ## Features
 
@@ -26,6 +26,11 @@ A production-ready FastAPI service for high-accuracy English speech-to-text usin
 - **Audio preprocessing**  
   - Automatic downmixing and resampling
   - File validation and chunking
+
+- **Performance monitoring**  
+  - Detailed server-side timing breakdown
+  - Upload, preprocessing, VAD, GPU inference metrics
+  - Network overhead analysis
 
 ## Table of Contents
 
@@ -142,9 +147,25 @@ curl -X POST http://localhost:8000/transcribe \
     "segments": [
       {"text": "Hello world", "start": 0.2, "end": 0.9}
     ]
+  },
+  "timing": {
+    "upload": 0.234,
+    "preprocessing": 0.123,
+    "vad_chunking": 0.345,
+    "model_inference": 1.567,
+    "formatting": 0.012,
+    "total_server": 2.281
   }
 }
 ```
+
+**Timing Breakdown**:
+- `upload`: File upload and saving (seconds)
+- `preprocessing`: Audio conversion to mono 16kHz (seconds)
+- `vad_chunking`: Voice activity detection and chunking (seconds)
+- `model_inference`: GPU processing time (seconds)
+- `formatting`: Response formatting (seconds)
+- `total_server`: Total server-side processing (seconds)
 
 ### WebSocket Streaming
 
